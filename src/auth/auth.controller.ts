@@ -14,6 +14,8 @@ import { LoginDto } from './dto/login.dto';
 import { Verify2FADto } from './dto/verify-2fa.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { ResendVerificationDto } from './dto/resend-verification.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordWithTokenDto } from './dto/reset-password-with-token.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 
@@ -87,6 +89,29 @@ export class AuthController {
   @Post('resend-verification')
   async resendVerification(@Body() resendVerificationDto: ResendVerificationDto) {
     return this.authService.resendVerificationEmail(resendVerificationDto.email);
+  }
+
+  @Post('forgot-password')
+  async forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(forgotPasswordDto);
+  }
+
+  @Post('reset-password')
+  async resetPassword(
+    @Body() body: { token: string; password: string },
+  ) {
+    return this.authService.resetPasswordWithAccessToken(body.token, body.password);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('reset-password/authenticated')
+  async resetPasswordAuthenticated(
+    @CurrentUser() user: any,
+    @Body() resetPasswordWithTokenDto: ResetPasswordWithTokenDto,
+  ) {
+    // For authenticated users, we can reset password directly
+    const userId = user.userId || user.id || user.sub;
+    return this.authService.resetPasswordAuthenticated(userId, resetPasswordWithTokenDto.password);
   }
 }
 

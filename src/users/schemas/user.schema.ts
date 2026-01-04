@@ -73,19 +73,6 @@ export class User {
   })
   isVerified: boolean;
 
-  @Column({
-    type: 'varchar',
-    length: 255,
-    nullable: true,
-  })
-  emailVerificationToken?: string;
-
-  @Column({
-    type: 'datetime',
-    nullable: true,
-  })
-  emailVerificationTokenExpires?: Date;
-
   @CreateDateColumn({
     type: 'datetime',
     default: () => 'CURRENT_TIMESTAMP',

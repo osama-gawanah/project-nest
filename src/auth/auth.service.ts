@@ -14,6 +14,7 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { Verify2FADto } from './dto/verify-2fa.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { UserRole } from '../users/schemas/user.schema';
 
 @Injectable()
@@ -34,9 +35,6 @@ export class AuthService {
       }
 
       const hashedPassword = await bcrypt.hash(password, 10);
-      const verificationToken = crypto.randomBytes(32).toString('hex');
-      const tokenExpires = new Date();
-      tokenExpires.setHours(tokenExpires.getHours() + 24);
 
       const user = await this.usersService.create({
         email,
@@ -45,21 +43,28 @@ export class AuthService {
         role: UserRole.USER,
         isTwoFactorEnabled: false,
         isVerified: false,
-        emailVerificationToken: verificationToken,
-        emailVerificationTokenExpires: tokenExpires,
       });
 
-      try {
-        await this.emailService.sendVerificationEmail(
-          email,
-          verificationToken,
-          username,
-        );
-      } catch (emailError) {
-        console.error('Failed to send verification email:', emailError);
-      }
+      // Generate verification access token (expires in 24 hours)
+      const verificationAccessToken = this.jwtService.sign(
+        { 
+          sub: user.id, 
+          email: user.email, 
+          type: 'email-verification' 
+        },
+        { expiresIn: '24h' }
+      );
 
-      const { password: _, emailVerificationToken: __, emailVerificationTokenExpires: ___, ...result } = user;
+      // Send verification email asynchronously (don't wait for it)
+      this.emailService.sendVerificationEmail(
+        email,
+        verificationAccessToken,
+        username,
+      ).catch((emailError) => {
+        console.error('Failed to send verification email:', emailError);
+      });
+
+      const { password: _, ...result } = user;
       return {
         ...result,
         message: 'Registration successful. Please check your email to verify your account.',
@@ -459,25 +464,33 @@ export class AuthService {
     }
   }
 
-  async verifyEmail(token: string) {
+  async verifyEmail(accessToken: string) {
     try {
-      const user = await this.usersService.findByEmailVerificationToken(token);
-      if (!user) {
+      // Verify the access token
+      let payload: any;
+      try {
+        payload = this.jwtService.verify(accessToken);
+      } catch (error) {
         throw new BadRequestException('Invalid or expired verification token');
+      }
+
+      // Check if token is an email verification token
+      if (payload.type !== 'email-verification') {
+        throw new BadRequestException('Invalid token type');
+      }
+
+      // Find user by ID
+      const user = await this.usersService.findById(payload.sub);
+      if (!user) {
+        throw new BadRequestException('User not found');
       }
 
       if (user.isVerified) {
         throw new BadRequestException('Email is already verified');
       }
 
-      if (user.emailVerificationTokenExpires && user.emailVerificationTokenExpires < new Date()) {
-        throw new BadRequestException('Verification token has expired');
-      }
-
       await this.usersService.update(user.id, {
         isVerified: true,
-        emailVerificationToken: undefined,
-        emailVerificationTokenExpires: undefined,
       });
 
       return { message: 'Email verified successfully' };
@@ -501,27 +514,27 @@ export class AuthService {
         throw new BadRequestException('Email is already verified');
       }
 
-      const verificationToken = crypto.randomBytes(32).toString('hex');
-      const tokenExpires = new Date();
-      tokenExpires.setHours(tokenExpires.getHours() + 24);
+      // Generate new verification access token (expires in 24 hours)
+      const verificationAccessToken = this.jwtService.sign(
+        { 
+          sub: user.id, 
+          email: user.email, 
+          type: 'email-verification' 
+        },
+        { expiresIn: '24h' }
+      );
 
-      await this.usersService.update(user.id, {
-        emailVerificationToken: verificationToken,
-        emailVerificationTokenExpires: tokenExpires,
+      // Send verification email asynchronously (don't wait for it)
+      this.emailService.sendVerificationEmail(
+        email,
+        verificationAccessToken,
+        user.username,
+      ).catch((emailError: any) => {
+        console.error('Failed to send verification email:', emailError);
+        // Log error but don't fail the request
       });
 
-      try {
-        await this.emailService.sendVerificationEmail(
-          email,
-          verificationToken,
-          user.username,
-        );
-      } catch (emailError: any) {
-        console.error('Failed to send verification email:', emailError);
-        const errorMessage = emailError?.message || 'Failed to send verification email';
-        throw new BadRequestException(errorMessage);
-      }
-
+      // Return immediately without waiting for email to be sent
       return { message: 'Verification email sent successfully' };
     } catch (error: any) {
       if (error instanceof BadRequestException) {
@@ -529,6 +542,109 @@ export class AuthService {
       }
       console.error('[resendVerificationEmail] Error:', error);
       throw new BadRequestException('Failed to resend verification email: ' + (error?.message || 'Unknown error'));
+    }
+  }
+
+  async forgotPassword(forgotPasswordDto: ForgotPasswordDto) {
+    try {
+      const { email } = forgotPasswordDto;
+
+      const user = await this.usersService.findByEmail(email);
+      if (!user) {
+        // Don't reveal if user exists for security
+        return { message: 'If an account with that email exists, a password reset link has been sent.' };
+      }
+
+      // Generate temporary access token for password reset (expires in 1 hour)
+      const resetAccessToken = this.jwtService.sign(
+        { 
+          sub: user.id, 
+          email: user.email, 
+          type: 'password-reset' 
+        },
+        { expiresIn: '1h' }
+      );
+
+      // Send password reset email asynchronously (don't wait for it)
+      this.emailService.sendPasswordResetEmail(
+        email,
+        resetAccessToken,
+        user.username,
+      ).catch((emailError: any) => {
+        console.error('Failed to send password reset email:', emailError);
+        // Don't throw error, just log it - we don't want to reveal if email exists
+      });
+
+      // Return immediately without waiting for email to be sent
+      return { message: 'If an account with that email exists, a password reset link has been sent.' };
+    } catch (error: any) {
+      console.error('[forgotPassword] Error:', error);
+      // Return generic message for security
+      return { message: 'If an account with that email exists, a password reset link has been sent.' };
+    }
+  }
+
+  async resetPasswordWithAccessToken(accessToken: string, newPassword: string) {
+    try {
+      // Verify the access token
+      let payload: any;
+      try {
+        payload = this.jwtService.verify(accessToken);
+      } catch (error) {
+        throw new UnauthorizedException('Invalid or expired access token');
+      }
+
+      // Check if token is a password reset token
+      if (payload.type !== 'password-reset') {
+        throw new UnauthorizedException('Invalid token type');
+      }
+
+      // Find user by ID
+      const user = await this.usersService.findById(payload.sub);
+      if (!user) {
+        throw new UnauthorizedException('User not found');
+      }
+
+      // Hash new password
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+      // Update password
+      await this.usersService.update(user.id, {
+        password: hashedPassword,
+      });
+
+      return { message: 'Password has been reset successfully' };
+    } catch (error: any) {
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+      console.error('[resetPasswordWithAccessToken] Error:', error);
+      throw new BadRequestException('Failed to reset password: ' + (error?.message || 'Unknown error'));
+    }
+  }
+
+  async resetPasswordAuthenticated(userId: string, newPassword: string) {
+    try {
+      const user = await this.usersService.findById(userId);
+      if (!user) {
+        throw new UnauthorizedException('User not found');
+      }
+
+      // Hash new password
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+      // Update password
+      await this.usersService.update(user.id, {
+        password: hashedPassword,
+      });
+
+      return { message: 'Password has been reset successfully' };
+    } catch (error: any) {
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+      console.error('[resetPasswordAuthenticated] Error:', error);
+      throw new BadRequestException('Failed to reset password: ' + (error?.message || 'Unknown error'));
     }
   }
 }
