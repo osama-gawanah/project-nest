@@ -1,0 +1,76 @@
+import {
+  Controller,
+  Post,
+  Get,
+  Patch,
+  Body,
+  UseGuards,
+} from '@nestjs/common';
+import { AuthService } from './auth.service';
+import { RegisterDto } from './dto/register.dto';
+import { LoginDto } from './dto/login.dto';
+import { Verify2FADto } from './dto/verify-2fa.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { CurrentUser } from './decorators/current-user.decorator';
+
+@Controller('auth')
+export class AuthController {
+  constructor(private authService: AuthService) {}
+
+  @Post('register')
+  async register(@Body() registerDto: RegisterDto) {
+    return this.authService.register(registerDto);
+  }
+
+  @Post('login')
+  async login(@Body() loginDto: LoginDto) {
+    return this.authService.login(loginDto);
+  }
+
+  @Post('login/verify-2fa')
+  async verify2FALogin(@Body() body: { tempToken: string; token: string }) {
+    return this.authService.verify2FALogin(body.tempToken, {
+      token: body.token,
+    });
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('profile')
+  async getProfile(@CurrentUser() user: any) {
+    return user;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('2fa/setup')
+  async setup2FA(@CurrentUser() user: any) {
+    return this.authService.setup2FA(user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('2fa/verify')
+  async verify2FA(
+    @CurrentUser() user: any,
+    @Body() verify2FADto: Verify2FADto,
+  ) {
+    return this.authService.verify2FA(user.userId, verify2FADto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('2fa/disable')
+  async disable2FA(@CurrentUser() user: any) {
+    return this.authService.disable2FA(user.userId);
+  }
+
+  @Post('refresh')
+  async refreshToken(@Body() refreshTokenDto: RefreshTokenDto) {
+    return this.authService.refreshToken(refreshTokenDto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('logout')
+  async logout(@CurrentUser() user: any) {
+    return this.authService.logout(user.userId || user.id);
+  }
+}
+
