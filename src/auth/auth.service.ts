@@ -40,16 +40,14 @@ export class AuthService {
         isTwoFactorEnabled: false,
       });
 
-      // Convert Sequelize model to plain object
-      const userPlain = user.toJSON ? user.toJSON() : (user as any).dataValues || user;
-      const { password: _, ...result } = userPlain;
+      const { password: _, ...result } = user;
       return result;
     } catch (error: any) {
       if (error instanceof BadRequestException) {
         throw error;
       }
-      // Handle Sequelize unique constraint errors
-      if (error?.name === 'SequelizeUniqueConstraintError' || error?.parent?.code === 'ER_DUP_ENTRY') {
+      // Handle TypeORM unique constraint errors
+      if (error?.code === 'ER_DUP_ENTRY' || error?.errno === 1062) {
         throw new BadRequestException('User with this email already exists');
       }
       // Log the actual error for debugging
@@ -78,32 +76,10 @@ export class AuthService {
         console.log(`[validateUser] User found: ID=${user.id}, Email=${user.email}`);
       }
 
-      // Get password from Sequelize model - try multiple ways
-      let userPassword: string | undefined;
-      
-      // Try direct access
-      if ((user as any).password) {
-        userPassword = (user as any).password;
-      }
-      // Try dataValues
-      else if ((user as any).dataValues?.password) {
-        userPassword = (user as any).dataValues.password;
-      }
-      // Try get() method
-      else if (typeof (user as any).get === 'function') {
-        userPassword = (user as any).get('password');
-      }
-      // Try toJSON
-      else if (typeof (user as any).toJSON === 'function') {
-        const plain = (user as any).toJSON();
-        userPassword = plain.password;
-      }
-
-      if (!userPassword) {
+      if (!user.password) {
         console.error('[validateUser] User found but password field is missing');
         if (isDevelopment) {
           console.error('[validateUser] User object keys:', Object.keys(user));
-          console.error('[validateUser] User dataValues:', (user as any).dataValues);
         }
         return null;
       }
@@ -112,7 +88,7 @@ export class AuthService {
         console.log(`[validateUser] Comparing passwords...`);
       }
       
-      const isPasswordValid = await bcrypt.compare(password, userPassword);
+      const isPasswordValid = await bcrypt.compare(password, user.password);
       
       if (isDevelopment) {
         console.log(`[validateUser] Password valid: ${isPasswordValid}`);
@@ -122,19 +98,7 @@ export class AuthService {
         return null;
       }
 
-      // Convert Sequelize model to plain object
-      let userPlain: any;
-      if (typeof (user as any).toJSON === 'function') {
-        userPlain = (user as any).toJSON();
-      } else if ((user as any).dataValues) {
-        userPlain = (user as any).dataValues;
-      } else if (typeof (user as any).get === 'function') {
-        userPlain = (user as any).get({ plain: true });
-      } else {
-        userPlain = user;
-      }
-
-      const { password: _, ...result } = userPlain;
+      const { password: _, ...result } = user;
       
       if (isDevelopment) {
         console.log(`[validateUser] User validated successfully: ID=${result.id}`);
@@ -412,8 +376,7 @@ export class AuthService {
       }
 
       // Get stored refresh token
-      const userPlain = (user as any).toJSON ? (user as any).toJSON() : (user as any).dataValues || user;
-      const storedRefreshToken = userPlain.refreshToken;
+      const storedRefreshToken = user.refreshToken;
 
       if (!storedRefreshToken || storedRefreshToken !== refreshToken) {
         throw new UnauthorizedException('Invalid refresh token');
@@ -424,7 +387,7 @@ export class AuthService {
         id: user.id,
         sub: user.id,
         email: user.email,
-        role: userPlain.role,
+        role: user.role,
       };
 
       const accessToken = this.jwtService.sign(newPayload, { expiresIn: '15m' });
@@ -446,8 +409,8 @@ export class AuthService {
         user: {
           id: user.id,
           email: user.email,
-          username: userPlain.username,
-          role: userPlain.role,
+          username: user.username,
+          role: user.role,
         },
       };
     } catch (error: any) {

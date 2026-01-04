@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { SequelizeModule } from '@nestjs/sequelize';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
@@ -16,13 +16,14 @@ import appConfig from './config/app.config';
       envFilePath: '.env',
       load: [databaseConfig, appConfig],
     }),
-    SequelizeModule.forRootAsync({
+    TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => {
         const dbConfig = configService.get('database');
         return {
           ...dbConfig,
-          models: [User],
+          entities: [User],
+          autoLoadEntities: true,
         };
       },
       inject: [ConfigService],
