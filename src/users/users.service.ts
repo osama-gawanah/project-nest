@@ -1,25 +1,25 @@
 import { Injectable } from '@nestjs/common';
-import { InjectModel } from '@nestjs/sequelize';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { User } from './schemas/user.schema';
 
 @Injectable()
 export class UsersService {
   constructor(
-    @InjectModel(User)
-    private userModel: typeof User,
+    @InjectRepository(User)
+    private userRepository: Repository<User>,
   ) {}
 
   async create(userData: Partial<User>): Promise<User> {
-    return this.userModel.create(userData as any);
+    const user = this.userRepository.create(userData);
+    return this.userRepository.save(user);
   }
 
   async findByEmail(email: string): Promise<User | null> {
     try {
-      const user = await this.userModel.findOne({ 
+      return this.userRepository.findOne({
         where: { email },
-        raw: false, // Return Sequelize model instance, not plain object
       });
-      return user;
     } catch (error) {
       console.error('[UsersService] Error finding user by email:', error);
       return null;
@@ -27,16 +27,15 @@ export class UsersService {
   }
 
   async findById(id: string | number): Promise<User | null> {
-    return this.userModel.findByPk(typeof id === 'string' ? parseInt(id) : id);
+    const userId = typeof id === 'string' ? parseInt(id, 10) : id;
+    return this.userRepository.findOne({
+      where: { id: userId },
+    });
   }
 
   async update(id: string | number, updateData: Partial<User>): Promise<User | null> {
-    const userId = typeof id === 'string' ? parseInt(id) : id;
-    const user = await this.userModel.findByPk(userId);
-    if (!user) {
-      return null;
-    }
-    await user.update(updateData);
-    return user;
+    const userId = typeof id === 'string' ? parseInt(id, 10) : id;
+    await this.userRepository.update(userId, updateData);
+    return this.findById(userId);
   }
 }

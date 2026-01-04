@@ -1,88 +1,81 @@
 import {
-  Table,
+  Entity,
   Column,
-  Model,
-  DataType,
-  PrimaryKey,
-  Default,
-  CreatedAt,
-  UpdatedAt,
-  AutoIncrement,
-} from 'sequelize-typescript';
+  PrimaryGeneratedColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
+} from 'typeorm';
 
 export enum UserRole {
   ADMIN = 'admin',
   USER = 'user',
 }
 
-@Table({
-  tableName: 'users',
-  timestamps: true,
-})
-export class User extends Model<User> {
-  @PrimaryKey
-  @AutoIncrement
-  @Column({
-    type: DataType.INTEGER,
-    allowNull: false,
-  })
-  declare id: number;
+@Entity('users')
+export class User {
+  @PrimaryGeneratedColumn()
+  id: number;
 
   @Column({
-    type: DataType.STRING,
-    allowNull: false,
+    type: 'varchar',
+    length: 255,
     unique: true,
+    nullable: false,
   })
   email: string;
 
   @Column({
-    type: DataType.STRING,
-    allowNull: false,
+    type: 'varchar',
+    length: 255,
+    nullable: false,
   })
   password: string;
 
   @Column({
-    type: DataType.STRING,
-    allowNull: false,
+    type: 'varchar',
+    length: 255,
+    nullable: false,
   })
   username: string;
 
   @Column({
-    type: DataType.ENUM(...Object.values(UserRole)),
-    defaultValue: UserRole.USER,
-    allowNull: false,
+    type: 'enum',
+    enum: UserRole,
+    default: UserRole.USER,
+    nullable: false,
   })
   role: UserRole;
 
-  @Default(false)
   @Column({
-    type: DataType.BOOLEAN,
-    allowNull: false,
+    type: 'boolean',
+    default: false,
+    nullable: false,
   })
   isTwoFactorEnabled: boolean;
 
   @Column({
-    type: DataType.STRING,
-    allowNull: true,
+    type: 'varchar',
+    length: 255,
+    nullable: true,
   })
   twoFactorSecret?: string;
 
   @Column({
-    type: DataType.TEXT,
-    allowNull: true,
+    type: 'text',
+    nullable: true,
   })
   refreshToken?: string;
 
-  @Default(false)
   @Column({
-    type: DataType.BOOLEAN,
-    allowNull: false,
+    type: 'boolean',
+    default: false,
+    nullable: false,
   })
   isVerified: boolean;
 
-  @CreatedAt
-  declare createdAt: Date;
+  @CreateDateColumn()
+  createdAt: Date;
 
-  @UpdatedAt
-  declare updatedAt: Date;
+  @UpdateDateColumn()
+  updatedAt: Date;
 }

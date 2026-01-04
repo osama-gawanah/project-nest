@@ -2,8 +2,8 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
-import { getConnectionToken } from '@nestjs/sequelize';
-import { Sequelize } from 'sequelize-typescript';
+import { DataSource } from 'typeorm';
+import { getDataSourceToken } from '@nestjs/typeorm';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
@@ -33,18 +33,16 @@ async function bootstrap() {
   // Global filters
   app.useGlobalFilters(new HttpExceptionFilter());
 
-  // Sync database schema in development (adds missing columns, doesn't drop existing data)
+  // Verify database connection
   if (configService.get<string>('app.nodeEnv') !== 'production') {
     try {
-      const sequelize = app.get<Sequelize>(getConnectionToken());
-      if (sequelize) {
-        // Use alter: true to add missing columns without dropping data
-        await sequelize.sync({ alter: true });
-        console.log('Database schema synchronized successfully');
+      const dataSource = app.get<DataSource>(getDataSourceToken());
+      if (dataSource && dataSource.isInitialized) {
+        console.log('Database connection established successfully');
       }
     } catch (error) {
-      console.error('Error synchronizing database:', error);
-      console.log('You may need to manually add the missing column. See fix-database.sql');
+      console.error('Error connecting to database:', error);
+      console.log('Please ensure your database is running and migrations are up to date');
     }
   }
 

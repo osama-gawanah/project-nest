@@ -25,15 +25,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('User not found');
     }
 
-    // Convert Sequelize model to plain object if needed
-    const userPlain = (user as any).toJSON ? (user as any).toJSON() : (user as any).dataValues || user;
-
     return {
-      userId: userPlain.id,
-      id: userPlain.id,
-      email: userPlain.email,
-      username: userPlain.username,
-      role: userPlain.role,
+      userId: user.id,
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      role: user.role,
     };
   }
 }
