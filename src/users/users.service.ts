@@ -33,6 +33,17 @@ export class UsersService {
     });
   }
 
+  async findByEmailVerificationToken(token: string): Promise<User | null> {
+    try {
+      return this.userRepository.findOne({
+        where: { emailVerificationToken: token },
+      });
+    } catch (error) {
+      console.error('[UsersService] Error finding user by verification token:', error);
+      return null;
+    }
+  }
+
   async update(id: string | number, updateData: Partial<User>): Promise<User | null> {
     const userId = typeof id === 'string' ? parseInt(id, 10) : id;
     await this.userRepository.update(userId, updateData);
