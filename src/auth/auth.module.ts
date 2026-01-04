@@ -5,12 +5,14 @@ import { PassportModule } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { UsersModule } from '../users/users.module';
+import { EmailModule } from '../common/services/email.module';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import jwtConfig from '../config/jwt.config';
 
 @Module({
   imports: [
     UsersModule,
+    EmailModule,
     PassportModule,
     ConfigModule.forFeature(jwtConfig),
     JwtModule.registerAsync({

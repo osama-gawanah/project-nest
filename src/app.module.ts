@@ -8,13 +8,14 @@ import { UsersModule } from './users/users.module';
 import { User } from './users/schemas/user.schema';
 import databaseConfig from './config/database.config';
 import appConfig from './config/app.config';
+import sendgridConfig from './config/sendgrid.config';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
-      load: [databaseConfig, appConfig],
+      load: [databaseConfig, appConfig, sendgridConfig],
     }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],

@@ -73,9 +73,29 @@ export class User {
   })
   isVerified: boolean;
 
-  @CreateDateColumn()
+  @Column({
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  emailVerificationToken?: string;
+
+  @Column({
+    type: 'datetime',
+    nullable: true,
+  })
+  emailVerificationTokenExpires?: Date;
+
+  @CreateDateColumn({
+    type: 'datetime',
+    default: () => 'CURRENT_TIMESTAMP',
+  })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({
+    type: 'datetime',
+    default: () => 'CURRENT_TIMESTAMP',
+    onUpdate: 'CURRENT_TIMESTAMP',
+  })
   updatedAt: Date;
 }

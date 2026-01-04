@@ -7,7 +7,9 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import * as speakeasy from 'speakeasy';
 import * as QRCode from 'qrcode';
+import * as crypto from 'crypto';
 import { UsersService } from '../users/users.service';
+import { EmailService } from '../common/services/email.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { Verify2FADto } from './dto/verify-2fa.dto';
@@ -19,6 +21,7 @@ export class AuthService {
   constructor(
     private usersService: UsersService,
     private jwtService: JwtService,
+    private emailService: EmailService,
   ) {}
 
   async register(registerDto: RegisterDto) {
@@ -31,6 +34,9 @@ export class AuthService {
       }
 
       const hashedPassword = await bcrypt.hash(password, 10);
+      const verificationToken = crypto.randomBytes(32).toString('hex');
+      const tokenExpires = new Date();
+      tokenExpires.setHours(tokenExpires.getHours() + 24);
 
       const user = await this.usersService.create({
         email,
@@ -38,19 +44,33 @@ export class AuthService {
         username,
         role: UserRole.USER,
         isTwoFactorEnabled: false,
+        isVerified: false,
+        emailVerificationToken: verificationToken,
+        emailVerificationTokenExpires: tokenExpires,
       });
 
-      const { password: _, ...result } = user;
-      return result;
+      try {
+        await this.emailService.sendVerificationEmail(
+          email,
+          verificationToken,
+          username,
+        );
+      } catch (emailError) {
+        console.error('Failed to send verification email:', emailError);
+      }
+
+      const { password: _, emailVerificationToken: __, emailVerificationTokenExpires: ___, ...result } = user;
+      return {
+        ...result,
+        message: 'Registration successful. Please check your email to verify your account.',
+      };
     } catch (error: any) {
       if (error instanceof BadRequestException) {
         throw error;
       }
-      // Handle TypeORM unique constraint errors
       if (error?.code === 'ER_DUP_ENTRY' || error?.errno === 1062) {
         throw new BadRequestException('User with this email already exists');
       }
-      // Log the actual error for debugging
       console.error('Registration error:', error);
       throw new BadRequestException('Failed to register user: ' + (error?.message || 'Unknown error'));
     }
@@ -139,6 +159,10 @@ export class AuthService {
           console.log(`[login] User validation failed for: ${email}`);
         }
         throw new UnauthorizedException('Invalid email or password');
+      }
+
+      if (!user.isVerified) {
+        throw new UnauthorizedException('Please verify your email address before logging in');
       }
 
       if (isDevelopment) {
@@ -424,7 +448,6 @@ export class AuthService {
 
   async logout(userId: string) {
     try {
-      // Remove refresh token from database
       await this.usersService.update(userId, {
         refreshToken: undefined,
       });
@@ -433,6 +456,79 @@ export class AuthService {
     } catch (error: any) {
       console.error('[logout] Error:', error);
       throw new BadRequestException('Failed to logout: ' + (error?.message || 'Unknown error'));
+    }
+  }
+
+  async verifyEmail(token: string) {
+    try {
+      const user = await this.usersService.findByEmailVerificationToken(token);
+      if (!user) {
+        throw new BadRequestException('Invalid or expired verification token');
+      }
+
+      if (user.isVerified) {
+        throw new BadRequestException('Email is already verified');
+      }
+
+      if (user.emailVerificationTokenExpires && user.emailVerificationTokenExpires < new Date()) {
+        throw new BadRequestException('Verification token has expired');
+      }
+
+      await this.usersService.update(user.id, {
+        isVerified: true,
+        emailVerificationToken: undefined,
+        emailVerificationTokenExpires: undefined,
+      });
+
+      return { message: 'Email verified successfully' };
+    } catch (error: any) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      console.error('[verifyEmail] Error:', error);
+      throw new BadRequestException('Failed to verify email: ' + (error?.message || 'Unknown error'));
+    }
+  }
+
+  async resendVerificationEmail(email: string) {
+    try {
+      const user = await this.usersService.findByEmail(email);
+      if (!user) {
+        throw new BadRequestException('User not found');
+      }
+
+      if (user.isVerified) {
+        throw new BadRequestException('Email is already verified');
+      }
+
+      const verificationToken = crypto.randomBytes(32).toString('hex');
+      const tokenExpires = new Date();
+      tokenExpires.setHours(tokenExpires.getHours() + 24);
+
+      await this.usersService.update(user.id, {
+        emailVerificationToken: verificationToken,
+        emailVerificationTokenExpires: tokenExpires,
+      });
+
+      try {
+        await this.emailService.sendVerificationEmail(
+          email,
+          verificationToken,
+          user.username,
+        );
+      } catch (emailError: any) {
+        console.error('Failed to send verification email:', emailError);
+        const errorMessage = emailError?.message || 'Failed to send verification email';
+        throw new BadRequestException(errorMessage);
+      }
+
+      return { message: 'Verification email sent successfully' };
+    } catch (error: any) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      console.error('[resendVerificationEmail] Error:', error);
+      throw new BadRequestException('Failed to resend verification email: ' + (error?.message || 'Unknown error'));
     }
   }
 }
